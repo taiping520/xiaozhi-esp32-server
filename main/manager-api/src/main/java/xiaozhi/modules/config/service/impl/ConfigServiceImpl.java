@@ -260,6 +260,7 @@ public class ConfigServiceImpl implements ConfigService {
                 typeConfig.put(model.getId(), model.getConfigJson());
                 // 如果是TTS类型，添加private_voice属性
                 if ("TTS".equals(modelTypes[i]) && voice != null) {
+                    ((Map<String, Object>) model.getConfigJson()).put("voice", voice);
                     ((Map<String, Object>) model.getConfigJson()).put("private_voice", voice);
                 }
                 // 如果是Intent类型，且type=intent_llm，则给他添加附加模型

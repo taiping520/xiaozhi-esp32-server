@@ -33,8 +33,8 @@ class ASRProvider(ASRProviderBase):
     def save_audio_to_file(self, opus_data: List[bytes], session_id: str) -> str:
         """将Opus音频数据解码并保存为WAV文件"""
 
-        file_name = f"tencent_asr_{session_id}_{uuid.uuid4()}.wav"
-        file_path = os.path.join(self.output_dir, file_name)
+        # file_name = f"tencent_asr_{session_id}_{uuid.uuid4()}.wav"
+        # file_path = os.path.join(self.output_dir, file_name)
         
         decoder = opuslib_next.Decoder(16000, 1)  # 16kHz, 单声道
         pcm_data = []
@@ -46,13 +46,14 @@ class ASRProvider(ASRProviderBase):
             except opuslib_next.OpusError as e:
                 logger.bind(tag=TAG).error(f"Opus解码错误: {e}", exc_info=True)
         
-        with wave.open(file_path, "wb") as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)  # 2 bytes = 16-bit
-            wf.setframerate(16000)
-            wf.writeframes(b"".join(pcm_data))
-        
-        return file_path
+        # with wave.open(file_path, "wb") as wf:
+        #     wf.setnchannels(1)
+        #     wf.setsampwidth(2)  # 2 bytes = 16-bit
+        #     wf.setframerate(16000)
+        #     wf.writeframes(b"".join(pcm_data))
+        #
+        # return file_path
+        return b"".join(pcm_data)
 
     @staticmethod
     def decode_opus(opus_data: List[bytes]) -> bytes:

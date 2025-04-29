@@ -498,6 +498,8 @@ class ConnectionHandler:
         # Define intent functions
         functions = None
         if hasattr(self, "func_handler"):
+            if self.func_handler is None:
+                self.func_handler = FunctionHandler(self)
             functions = self.func_handler.get_functions()
         response_message = []
         processed_chars = 0  # 跟踪已处理的字符位置

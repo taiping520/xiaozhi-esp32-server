@@ -213,6 +213,71 @@ class ConnectionHandler:
         elif isinstance(message, bytes):
             await handleAudioMessage(self, message)
 
+    async def handle_config_update(self, message):
+        """处理配置更新请求"""
+        content = message.get("content", {})
+        secret = content.pop("secret", None)
+        new_config = content
+
+        # 密钥验证
+        if secret != "43c716ae-37c4-49ba-84ab-2f0fbfcd7115":
+            self.logger.bind(tag=TAG).warning("配置更新请求的密钥不正确")
+            await self.websocket.send(json.dumps({
+                "type": "config_update_response",
+                "status": "error",
+                "message": "密钥不正确"
+            }))
+            return
+
+        # 遍历所有支持的配置模块
+        updated_modules = []
+        for config_model in ["tts", "llm", "vad", "asr", "memory", "intent"]:
+            if config_model not in new_config:
+                continue
+
+            new_content = new_config[config_model]
+            old_content = self.config.get(config_model, {})
+
+            # 记录配置变更
+            self.logger.bind(tag=TAG).info(
+                f"配置更新: {config_model} 旧值: {json.dumps(old_content, ensure_ascii=False)} "
+                f"新值: {json.dumps(new_content, ensure_ascii=False)}"
+            )
+
+            # 深度合并配置
+            if isinstance(old_content, dict) and isinstance(new_content, dict):
+                merged = {**old_content, **new_content}
+                self.config[config_model] = merged
+            else:
+                self.config[config_model] = new_content
+
+            # 标记需要重新初始化的模块
+            if config_model in ["llm", "tts", "asr", "vad", "intent", "memory"]:
+                updated_modules.append(config_model)
+
+        # 批量初始化模块
+        if updated_modules:
+            try:
+                self._initialize_components(self.config)
+                self.logger.bind(tag=TAG).info(
+                    f"已重新初始化模块: {', '.join(updated_modules)}"
+                )
+            except Exception as e:
+                self.logger.bind(tag=TAG).error(f"模块初始化失败: {str(e)}")
+                await self.websocket.send(json.dumps({
+                    "type": "config_update_response",
+                    "status": "error",
+                    "message": f"模块初始化失败: {str(e)}"
+                }))
+                return
+
+        # 返回成功响应
+        await self.websocket.send(json.dumps({
+            "type": "config_update_response",
+            "status": "success",
+            "message": f"已更新配置: {', '.join(updated_modules)}"
+        }))
+
     def _initialize_components(self, private_config):
         """初始化组件"""
         if private_config is not None:

@@ -31,7 +31,7 @@ class ASRProvider(ASRProviderBase):
         os.makedirs(self.output_dir, exist_ok=True)
 
     def save_audio_to_file(self, opus_data: List[bytes], session_id: str) -> str:
-        """将Opus音频数据解码并保存为WAV文件"""
+        """PCM数据保存为WAV文件"""
 
         # file_name = f"tencent_asr_{session_id}_{uuid.uuid4()}.wav"
         # file_path = os.path.join(self.output_dir, file_name)
@@ -54,6 +54,7 @@ class ASRProvider(ASRProviderBase):
         #
         # return file_path
         return b"".join(pcm_data)
+
 
     @staticmethod
     def decode_opus(opus_data: List[bytes]) -> bytes:
@@ -86,6 +87,12 @@ class ASRProvider(ASRProviderBase):
 
             # 将Opus音频数据解码为PCM
             pcm_data = self.decode_opus(opus_data)
+
+            # 判断是否保存为WAV文件
+            if self.delete_audio_file:
+                pass
+            else:
+                self.save_audio_to_file(pcm_data, session_id)
             
             # 将音频数据转换为Base64编码
             base64_audio = base64.b64encode(pcm_data).decode('utf-8')

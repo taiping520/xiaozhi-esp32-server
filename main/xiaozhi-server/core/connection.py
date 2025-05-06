@@ -1093,6 +1093,7 @@ def filter_sensitive_info(config: dict) -> dict:
         "personal_access_token",
         "access_token",
         "token",
+        "secret",
         "access_key_secret",
         "secret_key",
     ]

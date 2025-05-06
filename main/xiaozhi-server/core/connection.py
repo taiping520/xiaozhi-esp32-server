@@ -131,12 +131,11 @@ class ConnectionHandler:
             int(self.config.get("close_connection_no_voice_time", 120)) + 60
         )  # 在原来第一道关闭的基础上加60秒，进行二道关闭
 
-        self.audio_format = "opus"
-
     async def handle_connection(self, ws):
         try:
             # 获取并验证headers
             self.headers = dict(ws.request.headers)
+
             if self.headers.get("device-id", None) is None:
                 # 尝试从 URL 的查询参数中获取 device-id
                 from urllib.parse import parse_qs, urlparse
@@ -566,7 +565,7 @@ class ConnectionHandler:
                     future = self.executor.submit(
                         self.speak_and_play, segment_text, text_index
                     )
-                    self.tts_queue.put(future)
+                    self.tts_queue.put((future, text_index))
                     processed_chars += len(segment_text_raw)  # 更新已处理字符位置
 
         # 处理最后剩余的文本
@@ -599,8 +598,6 @@ class ConnectionHandler:
         # Define intent functions
         functions = None
         if hasattr(self, "func_handler"):
-            if self.func_handler is None:
-                self.func_handler = FunctionHandler(self)
             functions = self.func_handler.get_functions()
         response_message = []
         processed_chars = 0  # 跟踪已处理的字符位置
@@ -698,7 +695,7 @@ class ConnectionHandler:
                             future = self.executor.submit(
                                 self.speak_and_play, segment_text, text_index
                             )
-                            self.tts_queue.put(future)
+                            self.tts_queue.put((future, text_index))
                             # 更新已处理字符位置
                             processed_chars += len(segment_text_raw)
 
@@ -862,7 +859,10 @@ class ConnectionHandler:
             text = None
             try:
                 try:
-                    future = self.tts_queue.get(timeout=1)
+                    item = self.tts_queue.get(timeout=1)
+                    if item is None:
+                        continue
+                    future, text_index = item  # 解包获取 Future 和 text_index
                 except queue.Empty:
                     if self.stop_event.is_set():
                         break
@@ -870,11 +870,11 @@ class ConnectionHandler:
                 if future is None:
                     continue
                 text = None
-                audio_datas, text_index, tts_file = [], 0, None
+                opus_datas, tts_file = [],  None
                 try:
                     self.logger.bind(tag=TAG).debug("正在处理TTS任务...")
                     tts_timeout = int(self.config.get("tts_timeout", 10))
-                    tts_file, text, text_index = future.result(timeout=tts_timeout)
+                    tts_file, text, _ = future.result(timeout=tts_timeout)
                     if text is None or len(text) <= 0:
                         self.logger.bind(tag=TAG).error(
                             f"TTS出错：{text_index}: tts text is empty"
@@ -888,12 +888,9 @@ class ConnectionHandler:
                             f"TTS生成：文件路径: {tts_file}"
                         )
                         if os.path.exists(tts_file):
-                            if self.audio_format == "pcm":
-                                audio_datas, _ = self.tts.audio_to_pcm_data(tts_file)
-                            else:
-                                audio_datas, _ = self.tts.audio_to_opus_data(tts_file)
+                            opus_datas, _ = self.tts.audio_to_opus_data(tts_file)
                             # 在这里上报TTS数据（使用文件路径）
-                            enqueue_tts_report(self, 2, text, audio_datas)
+                            enqueue_tts_report(self, 2, text, opus_datas)
                         else:
                             self.logger.bind(tag=TAG).error(
                                 f"TTS出错：文件不存在{tts_file}"
@@ -904,7 +901,7 @@ class ConnectionHandler:
                     self.logger.bind(tag=TAG).error(f"TTS出错: {e}")
                 if not self.client_abort:
                     # 如果没有中途打断就发送语音
-                    self.audio_play_queue.put((audio_datas, text, text_index))
+                    self.audio_play_queue.put((opus_datas, text, text_index))
                 if (
                     self.tts.delete_audio_file
                     and tts_file is not None
@@ -935,13 +932,13 @@ class ConnectionHandler:
             text = None
             try:
                 try:
-                    audio_datas, text, text_index = self.audio_play_queue.get(timeout=1)
+                    opus_datas, text, text_index = self.audio_play_queue.get(timeout=1)
                 except queue.Empty:
                     if self.stop_event.is_set():
                         break
                     continue
                 future = asyncio.run_coroutine_threadsafe(
-                    sendAudioMessage(self, audio_datas, text, text_index), self.loop
+                    sendAudioMessage(self, opus_datas, text, text_index), self.loop
                 )
                 future.result()
             except Exception as e:

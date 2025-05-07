@@ -1,4 +1,3 @@
-from config.logger import setup_logging
 import json
 from core.handle.abortHandle import handleAbortMessage
 from core.handle.helloHandle import handleHelloMessage
@@ -10,30 +9,26 @@ from core.handle.ttsReportHandle import enqueue_tts_report
 import asyncio
 
 TAG = __name__
-logger = setup_logging()
 
 
 async def handleTextMessage(conn, message):
     """处理文本消息"""
-    logger.bind(tag=TAG).info(f"收到文本消息：{message}")
+    conn.logger.bind(tag=TAG).info(f"收到文本消息：{message}")
     try:
         msg_json = json.loads(message)
         if isinstance(msg_json, int):
             await conn.websocket.send(message)
             return
         if msg_json["type"] == "hello":
-            await handleHelloMessage(conn, msg_json)
+            await handleHelloMessage(conn)
         elif msg_json["type"] == "abort":
             await handleAbortMessage(conn)
         elif msg_json["type"] == "listen":
             if "mode" in msg_json:
                 conn.client_listen_mode = msg_json["mode"]
-                logger.bind(tag=TAG).debug(f"客户端拾音模式：{conn.client_listen_mode}")
-            if "sensor" in msg_json:
-                conn.client_have_voice = True
-                conn.client_voice_stop = False
-                await handleSensorMessage(conn, msg_json)
-                return
+                conn.logger.bind(tag=TAG).debug(
+                    f"客户端拾音模式：{conn.client_listen_mode}"
+                )
             if msg_json["state"] == "start":
                 conn.client_have_voice = True
                 conn.client_voice_stop = False
@@ -143,21 +138,3 @@ async def handleTextMessage(conn, message):
                     )
     except json.JSONDecodeError:
         await conn.websocket.send(message)
-
-async def handleSensorMessage(conn, message):
-    first = bool(message["wakeup"])
-    sensor = message["sensor"]
-    value = int(message["sensor_value"])
-    msg = ''
-    if 'hug' in sensor:
-        msg = "[hug]"  # 用户拥抱
-    elif 'head' in sensor:
-        msg = "[head]"  # 用户摸头
-    elif 'left_hand' in sensor:
-        msg = "[sl]"  # 用户握手（左手）
-    elif 'right_hand' in sensor:
-        msg = "[sr]"  # 用户握手（右手）
-    logger.bind(tag=TAG).info(f"传感器事件: {sensor}, 消息: {msg}, 值: {value}, 是否首次: {first}")
-    # if first:
-    #     msg += ""
-    await startToChat(conn, msg)

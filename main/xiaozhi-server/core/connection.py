@@ -58,9 +58,9 @@ class ConnectionHandler:
         self.config = copy.deepcopy(config)
         self.session_id = str(uuid.uuid4())
         self.logger = setup_logging()
-        self.auth = AuthMiddleware(config)
         self.server = server  # 保存server实例的引用
 
+        self.auth = AuthMiddleware(config)
         self.need_bind = False
         self.bind_code = None
         self.read_config_from_api = self.config.get("read_config_from_api", False)
@@ -128,13 +128,17 @@ class ConnectionHandler:
             if len(cmd) > self.max_cmd_length:
                 self.max_cmd_length = len(cmd)
 
-        self.close_after_chat = False  # 是否在聊天结束后关闭连接
-        self.use_function_call_mode = False
+        # 是否在聊天结束后关闭连接
+        self.close_after_chat = False
+        self.load_function_plugin = False
+        self.intent_type = "nointent"
 
         self.timeout_task = None
         self.timeout_seconds = (
             int(self.config.get("close_connection_no_voice_time", 120)) + 60
         )  # 在原来第一道关闭的基础上加60秒，进行二道关闭
+
+        self.audio_format = "opus"
 
     async def handle_connection(self, ws):
         try:
@@ -368,11 +372,11 @@ class ConnectionHandler:
         self.memory.init_memory(self.device_id, self.llm)
 
     def _initialize_intent(self):
-        if (
-            self.config["Intent"][self.config["selected_module"]["Intent"]]["type"]
-            == "function_call"
-        ):
-            self.use_function_call_mode = True
+        self.intent_type = self.config["Intent"][
+            self.config["selected_module"]["Intent"]
+        ]["type"]
+        if self.intent_type == "function_call" or self.intent_type == "intent_llm":
+            self.load_function_plugin = True
         """初始化意图识别模块"""
         # 获取意图识别配置
         intent_config = self.config["Intent"]
@@ -760,7 +764,13 @@ class ConnectionHandler:
                 )
 
                 self.dialogue.put(
-                    Message(role="tool", tool_call_id=function_id, content=text)
+                    Message(
+                        role="tool",
+                        tool_call_id=(
+                            str(uuid.uuid4()) if function_id is None else function_id
+                        ),
+                        content=text,
+                    )
                 )
                 self.chat_with_function_calling(text, tool_call=True)
         elif result.action == Action.NOTFOUND or result.action == Action.ERROR:
@@ -806,9 +816,12 @@ class ConnectionHandler:
                             f"TTS生成：文件路径: {tts_file}"
                         )
                         if os.path.exists(tts_file):
-                            opus_datas, _ = self.tts.audio_to_opus_data(tts_file)
+                            if self.audio_format == "pcm":
+                                audio_datas, _ = self.tts.audio_to_pcm_data(tts_file)
+                            else:
+                                audio_datas, _ = self.tts.audio_to_opus_data(tts_file)
                             # 在这里上报TTS数据（使用文件路径）
-                            enqueue_tts_report(self, 2, text, opus_datas)
+                            enqueue_tts_report(self, 2, text, audio_datas)
                         else:
                             self.logger.bind(tag=TAG).error(
                                 f"TTS出错：文件不存在{tts_file}"
@@ -819,7 +832,7 @@ class ConnectionHandler:
                     self.logger.bind(tag=TAG).error(f"TTS出错: {e}")
                 if not self.client_abort:
                     # 如果没有中途打断就发送语音
-                    self.audio_play_queue.put((opus_datas, text, text_index))
+                    self.audio_play_queue.put((audio_datas, text, text_index))
                 if (
                     self.tts.delete_audio_file
                     and tts_file is not None
@@ -850,13 +863,13 @@ class ConnectionHandler:
             text = None
             try:
                 try:
-                    opus_datas, text, text_index = self.audio_play_queue.get(timeout=1)
+                    audio_datas, text, text_index = self.audio_play_queue.get(timeout=1)
                 except queue.Empty:
                     if self.stop_event.is_set():
                         break
                     continue
                 future = asyncio.run_coroutine_threadsafe(
-                    sendAudioMessage(self, opus_datas, text, text_index), self.loop
+                    sendAudioMessage(self, audio_datas, text, text_index), self.loop
                 )
                 future.result()
             except Exception as e:

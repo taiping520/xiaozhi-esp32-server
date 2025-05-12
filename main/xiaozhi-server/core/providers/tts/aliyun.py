@@ -13,6 +13,13 @@ import urllib.parse
 import time
 import uuid
 from urllib import parse
+
+from config.logger import setup_logging
+
+TAG = __name__
+logger = setup_logging()
+
+
 class AccessToken:
     @staticmethod
     def _encode_text(text):
@@ -169,9 +176,9 @@ class TTSProvider(TTSProviderBase):
                 resp = requests.post(self.api_url, json.dumps(request_json), headers=self.header)
             # 检查返回请求数据的mime类型是否是audio/***，是则保存到指定路径下；返回的是binary格式的
             if resp.headers['Content-Type'].startswith('audio/'):
-                with open(output_file, 'wb') as f:
-                    f.write(resp.content)
-                return output_file
+                # with open(output_file, 'wb') as f:
+                #     f.write(resp.content)
+                return resp.content
             else:
                 raise Exception(f"{__name__} status_code: {resp.status_code} response: {resp.content}")
         except Exception as e:

@@ -78,8 +78,9 @@ class TTSProvider(TTSProviderBase):
             )
             if "data" in resp.json():
                 data = resp.json()["data"]
-                file_to_save = open(output_file, "wb")
-                file_to_save.write(base64.b64decode(data))
+                # file_to_save = open(output_file, "wb")
+                # file_to_save.write(base64.b64decode(data))
+                return base64.b64decode(data)
             else:
                 raise Exception(
                     f"{__name__} status_code: {resp.status_code} response: {resp.content}"

@@ -21,11 +21,12 @@ class TTSProviderBase(ABC):
     def to_tts(self, text):
         tmp_file = self.generate_filename()
         try:
+            audio = None
             max_repeat_time = 5
             text = MarkdownCleaner.clean_markdown(text)
-            while not os.path.exists(tmp_file) and max_repeat_time > 0:
+            while  audio is None and max_repeat_time > 0:
                 try:
-                    asyncio.run(self.text_to_speak(text, tmp_file))
+                    audio = asyncio.run(self.text_to_speak(text, tmp_file))
                 except Exception as e:
                     logger.bind(tag=TAG).warning(
                         f"语音生成失败{5 - max_repeat_time + 1}次: {text}，错误: {e}"
@@ -43,8 +44,9 @@ class TTSProviderBase(ABC):
                 logger.bind(tag=TAG).error(
                     f"语音生成失败: {text}，请检查网络或服务是否正常"
                 )
-
-            return tmp_file
+            if tmp_file is not None and audio is None:
+                return tmp_file
+            return audio
         except Exception as e:
             logger.bind(tag=TAG).error(f"Failed to generate TTS file: {e}")
             return None

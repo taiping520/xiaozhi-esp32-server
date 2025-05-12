@@ -1,3 +1,4 @@
+import io
 import json
 import socket
 import subprocess
@@ -864,14 +865,18 @@ def analyze_emotion(text):
 
 def audio_to_data(audio_file_path, is_opus=True):
     # 获取文件后缀名
-    file_type = os.path.splitext(audio_file_path)[1]
-    if file_type:
-        file_type = file_type.lstrip(".")
-    # 读取音频文件，-nostdin 参数：不要从标准输入读取数据，否则FFmpeg会阻塞
-    audio = AudioSegment.from_file(
-        audio_file_path, format=file_type, parameters=["-nostdin"]
-    )
-
+    if isinstance(audio_file_path, str):
+        file_type = os.path.splitext(audio_file_path)[1]
+        if file_type:
+            file_type = file_type.lstrip(".")
+        # 读取音频文件，-nostdin 参数：不要从标准输入读取数据，否则FFmpeg会阻塞
+        audio = AudioSegment.from_file(
+            audio_file_path, format=file_type, parameters=["-nostdin"]
+        )
+    else:
+        file_type = get_audio_format(audio_file_path)
+        audio = AudioSegment.from_file(io.BytesIO(audio_file_path), format=file_type,
+                                       parameters=["-nostdin"])
     # 转换为单声道/16kHz采样率/16位小端编码（确保与编码器匹配）
     audio = audio.set_channels(1).set_frame_rate(16000).set_sample_width(2)
 
@@ -957,3 +962,53 @@ def check_asr_update(before_config, new_config):
     print(f"前asr:{current_asr_type}，后asr:{new_asr_type}")
     update_asr = current_asr_type != new_asr_type
     return update_asr
+
+def get_audio_format(file_bytes):
+    # WAV 格式: 文件以 "RIFF" 开头，后接 "WAVE"
+    if file_bytes[:4] == b'RIFF' and file_bytes[8:12] == b'WAVE':
+        return 'wav'
+
+    # OGG 格式: 文件以 "OggS" 开头
+    elif file_bytes[:4] == b'OggS':
+        return 'ogg'
+
+    # MP3 格式: 文件以 "ID3" 开头
+    elif file_bytes[:3] == b'ID3':
+        return 'mp3'
+
+    # FLAC 格式: 文件以 "fLaC" 开头
+    elif file_bytes[:4] == b'fLaC':
+        return 'flac'
+
+    # AAC 格式: 文件以 "ADIF" 或 "ftyp" (AAC) 标识
+    elif file_bytes[:4] == b'ADIF' or file_bytes[:4] == b'ftyp':
+        if b'aac' in file_bytes[4:8]:
+            return 'aac'
+
+    # M4A 格式: MP4 的一种变种，使用 "ftyp" 标识
+    elif file_bytes[:4] == b'ftyp' and (b'm4a' in file_bytes[4:8] or b'mp42' in file_bytes[4:8]):
+        return 'm4a'
+
+    # WMA 格式: Windows Media Audio，以 "ASF" 或 "RIFF" 格式标识
+    elif file_bytes[:4] == b'RIFF' and file_bytes[8:12] == b'ASF ':
+        return 'wma'
+
+    # FLV 格式: Flash 视频，音频文件通常包含在 FLV 文件中
+    elif file_bytes[:3] == b'FLV':
+        return 'flv'
+
+    # WebM 格式: WebM 音频通常包含在 WebM 文件中，文件以 "RIFF" 开头，格式标识为 "WEBM"
+    elif file_bytes[:4] == b'RIFF' and file_bytes[8:12] == b'WEBM':
+        return 'webm'
+    # PCM 格式：未压缩音频（通常是WAV文件的音频数据），没有文件头部特定标识
+    # 简单通过字节流中常见的 PCM 数据特点进行推测。可以通过字节进行判断（例如：音频数据通常为 16-bit）
+    # 这里只提供一个简单的检查，如果有更复杂需求可进一步改进。
+    elif len(file_bytes) > 2 and (file_bytes[0] == 0x01 or file_bytes[1] == 0x02):
+        return 'pcm'
+
+    # Opus 格式: Opus 文件以 "OpusHead" 作为头部标识
+    elif file_bytes[:8] == b'OpusHead':
+        return 'opus'
+
+    # 无法识别的格式
+    return None

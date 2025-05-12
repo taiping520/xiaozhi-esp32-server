@@ -855,7 +855,11 @@ class ConnectionHandler:
                         self.logger.bind(tag=TAG).debug(
                             f"TTS生成：文件路径: {tts_file}"
                         )
-                        if os.path.exists(tts_file):
+                        if os.path.exists(tts_file) and isinstance(tts_file, str):
+                            opus_datas, _ = self.tts.audio_to_opus_data(tts_file)
+                            # 在这里上报TTS数据（使用文件路径）
+                            enqueue_tts_report(self, 2, text, opus_datas)
+                        elif isinstance(tts_file, bytes):
                             if self.audio_format == "pcm":
                                 audio_datas, _ = self.tts.audio_to_pcm_data(tts_file)
                             else:

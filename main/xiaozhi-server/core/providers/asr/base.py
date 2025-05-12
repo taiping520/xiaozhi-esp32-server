@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Any
 import opuslib_next
 from config.logger import setup_logging
 
@@ -28,7 +28,7 @@ class ASRProviderBase(ABC):
         self.audio_format = format
 
     @staticmethod
-    def decode_opus(opus_data: List[bytes]) -> bytes:
+    def decode_opus(opus_data: List[bytes]) -> list[Any]:
         """将Opus音频数据解码为PCM数据"""
 
         decoder = opuslib_next.Decoder(16000, 1)  # 16kHz, 单声道
